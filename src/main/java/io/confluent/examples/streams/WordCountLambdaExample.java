@@ -16,25 +16,24 @@
 package io.confluent.examples.streams;
 
 import io.confluent.common.utils.TestUtils;
+import io.opentracing.Scope;
+import io.opentracing.Tracer;
+import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.KStream;
-import org.apache.kafka.streams.kstream.KTable;
-import org.apache.kafka.streams.kstream.Produced;
 
-import java.util.Arrays;
 import java.util.Properties;
-import java.util.regex.Pattern;
 
 public class WordCountLambdaExample {
-
     static final String inputTopic = "UppercasedTextLinesTopic";
     static final String outputTopic = "streams-wordcount-output";
+    static Tracer tracer = SfxTracingHelper.createTracer("word-count");
 
     public static void main(final String[] args) {
-        SfxTracingHelper.createTracer("word-count");
         final String bootstrapServers = args.length > 0 ? args[0] : "localhost:9092";
         final Properties streamsConfiguration = getStreamsConfiguration(bootstrapServers);
         final StreamsBuilder builder = new StreamsBuilder();
@@ -60,15 +59,32 @@ public class WordCountLambdaExample {
     }
 
     static void createWordCountStream(final StreamsBuilder builder) {
-        final KStream<String, String> textLines = builder.stream(inputTopic);
-        final Pattern pattern = Pattern.compile("\\W+", Pattern.UNICODE_CHARACTER_CLASS);
-        final KTable<String, Long> wordCounts = textLines
-                .flatMapValues(value -> Arrays.asList(pattern.split(value.toLowerCase())))
-                .peek((bytes, s) -> SfxTracingHelper.reportEnd("wordcount-stream", s))
-                .groupBy((keyIgnored, word) -> word)
-                .count();
+        final Serde<String> stringSerde = Serdes.String();
+        final Serde<byte[]> byteArraySerde = Serdes.ByteArray();
+        final KStream<byte[], String> textLines = builder.stream(inputTopic, Consumed.with(byteArraySerde, stringSerde));
+        final KStream<byte[], String> lowerCasedTextLines = textLines
+                .peek((bytes, value) -> SfxTracingHelper.reportConsume(tracer, inputTopic, value, "consume"))
+                .mapValues(v -> {
+                    try (Scope scope = tracer.buildSpan("to-lower").startActive(true)) {
+                        try {
+                            Thread.sleep((int)(1000 + Math.random() * 2000));
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
 
-        wordCounts.toStream().to(outputTopic, Produced.with(Serdes.String(), Serdes.Long()));
+                        return v.toLowerCase();
+                    }
+                })
+                /*
+                .flatMapValues(value -> {
+                    try (Scope scope = GlobalTracer.get().buildSpan("split-words").startActive(true)) {
+                        return Arrays.asList(pattern.split(value.toLowerCase()));
+                    }
+                })
+                */
+                .peek((bytes, value) -> SfxTracingHelper.reportProduce(tracer, outputTopic, value, "produce"));
+
+        lowerCasedTextLines.to(outputTopic);
     }
 
 }

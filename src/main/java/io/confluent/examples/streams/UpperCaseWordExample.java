@@ -16,6 +16,8 @@
 package io.confluent.examples.streams;
 
 import io.confluent.common.utils.TestUtils;
+import io.opentracing.Scope;
+import io.opentracing.Tracer;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
@@ -29,9 +31,9 @@ import java.util.Properties;
 public class UpperCaseWordExample {
     static final String inputTopic = "TextLinesTopic";
     public static final String outputTopic = "UppercasedTextLinesTopic";
+    static Tracer tracer = SfxTracingHelper.createTracer("upper-case");
 
     public static void main(final String[] args) {
-        SfxTracingHelper.createTracer("upper-case");
 
         final String bootstrapServers = args.length > 0 ? args[0] : "localhost:9092";
         final Properties streamsConfiguration = getStreamsConfiguration(bootstrapServers);
@@ -62,8 +64,18 @@ public class UpperCaseWordExample {
         final Serde<byte[]> byteArraySerde = Serdes.ByteArray();
         final KStream<byte[], String> textLines = builder.stream(inputTopic, Consumed.with(byteArraySerde, stringSerde));
         final KStream<byte[], String> uppercasedWithMapValues = textLines
-                .mapValues(v -> v.toUpperCase())
-                .peek((bytes, s) -> SfxTracingHelper.reportEnd("upper-case-stream", s));
+                .peek((bytes, value) -> SfxTracingHelper.reportConsume(tracer, inputTopic, value, "consume"))
+                .mapValues(v -> {
+                    try (Scope scope = tracer.buildSpan("to-upper").startActive(true)) {
+                        try {
+                            Thread.sleep((int)(1000 + Math.random() * 2000));
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                        return v.toUpperCase();
+                    }
+                })
+                .peek((bytes, value) -> SfxTracingHelper.reportProduce(tracer, outputTopic, value, "produce"));
 
         uppercasedWithMapValues.to(outputTopic);
     }

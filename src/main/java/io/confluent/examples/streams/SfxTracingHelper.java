@@ -3,6 +3,7 @@ package io.confluent.examples.streams;
 import io.jaegertracing.Configuration;
 import io.jaegertracing.internal.samplers.ConstSampler;
 import io.jaegertracing.zipkin.ZipkinV2Reporter;
+import io.opentracing.References;
 import io.opentracing.Span;
 import io.opentracing.SpanContext;
 import io.opentracing.Tracer;
@@ -11,18 +12,28 @@ import io.opentracing.propagation.TextMap;
 import io.opentracing.tag.Tags;
 import io.opentracing.util.GlobalTracer;
 import okhttp3.Request;
+import org.apache.log4j.Logger;
 import redis.clients.jedis.Jedis;
 import zipkin2.reporter.AsyncReporter;
 import zipkin2.reporter.okhttp3.OkHttpSender;
 
+import java.lang.invoke.MethodHandles;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+
 public class SfxTracingHelper {
+    static final Logger LOGGER = Logger.getLogger(MethodHandles.lookup().lookupClass());
+
     static Tracer createTracer(final String serviceName) {
-        final String ingestUrl = System.getProperty("ingestUrl","http://192.168.64.8:8080");
+        final String ingestUrl = System.getProperty("ingestUrl","http://192.168.64.8:8080/v1/trace");
         final String accessToken = System.getProperty("accessToken");
+
+        System.out.println("ingestUrl: " + ingestUrl);
+        System.out.println("accessToken: " + accessToken);
 
         final OkHttpSender.Builder senderBuilder = OkHttpSender.newBuilder()
                 .compressionEnabled(true)
-                .endpoint(ingestUrl + "/v1/trace");
+                .endpoint(ingestUrl);
 
         senderBuilder.clientBuilder().addInterceptor(chain -> {
             final Request request = chain.request().newBuilder()
@@ -45,39 +56,59 @@ public class SfxTracingHelper {
         return tracer;
     }
 
-    static void reportEnd(final String op, final String value) {
-        final String mapKey = value.split(" ")[0];
-        System.out.println("mapKey: " + mapKey);
-        final Tracer tracer = GlobalTracer.get();
+    static void reportConsume(final Tracer tracer, final String topic, final String value, final String op) {
+        LOGGER.debug(String.format("reportConsume op: %s, topic: %s", op, topic));
+        final String mapKey = value.trim().split("\\s+")[0];
+        LOGGER.debug(String.format("mapKey: %s", mapKey));
         final Jedis cache = new Jedis("localhost");
-        final long tstamp = System.currentTimeMillis() * 1000;
-        final Span span = extractTraceCtx(tracer, op, cache, mapKey, tstamp);
+        final Instant start = Instant.now();
+        final Span span = createOrContinueSpan(tracer, op, cache, mapKey, start);
+        span.setTag("cId", mapKey);
         Tags.SAMPLING_PRIORITY.set(span, 1);
-        try {
-            Thread.sleep(2000);
-        } catch (final InterruptedException e) {
-            e.printStackTrace();
-        }
-        span.finish(System.currentTimeMillis()* 1000);
-        tracer.inject(span.context(), Format.Builtin.TEXT_MAP, new JedisTextMapAdapter(new Jedis("localhost"), mapKey));
+        span.setTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CONSUMER);
+        span.setTag(Tags.MESSAGE_BUS_DESTINATION.getKey(), topic);
+        span.finish(Instant.EPOCH.until(Instant.now(), ChronoUnit.MICROS));
     }
 
-    protected static Span extractTraceCtx(final Tracer tracer, final String op, final Jedis jedis, final String mapKey, final long tstamp) {
+    static void reportProduce(final Tracer tracer, final String topic, final String value, final String op) {
+        LOGGER.debug(String.format("reportConsume op: %s, topic: %s", op, topic));
+        final String mapKey = value.trim().split("\\s+")[0];
+        LOGGER.debug(String.format("mapKey: %s", mapKey));
+        final Jedis cache = new Jedis("localhost");
+        final Instant start = Instant.now();
+        final Span span = createOrContinueSpan(tracer, op, cache, mapKey, start);
+        Tags.SAMPLING_PRIORITY.set(span, 1);
+        Tags.SPAN_KIND.set(span, Tags.SPAN_KIND_PRODUCER);
+        Tags.MESSAGE_BUS_DESTINATION.set(span, topic);
+        span.finish(Instant.EPOCH.until(Instant.now(), ChronoUnit.MICROS));
+        tracer.inject(span.context(), Format.Builtin.TEXT_MAP, new JedisTextMapAdapter(cache, mapKey));
+    }
+
+    protected static SpanContext extractCtx(final Tracer tracer, final Jedis cache, final String mapKey) {
+        final TextMap carrier = new JedisTextMapAdapter(cache, mapKey);
+        return  tracer.extract(Format.Builtin.TEXT_MAP, carrier);
+    }
+
+    protected static Span createOrContinueSpan(final Tracer tracer, final String op, final Jedis cache, final String mapKey, final Instant start) {
         final Tracer.SpanBuilder spanBuilder = tracer.buildSpan(op);
         try {
-            final TextMap carrier = new JedisTextMapAdapter(jedis, mapKey);
-            final SpanContext spanContext = tracer.extract(Format.Builtin.TEXT_MAP, carrier);
+            final SpanContext spanContext = extractCtx(tracer, cache, mapKey);
             if (spanContext != null) {
-                System.out.println("parent: " + spanContext.toString());
-                spanBuilder.asChildOf(spanContext);
+                LOGGER.debug(String.format("Parent: %s for mapKey: %s", spanContext, mapKey));
+                spanBuilder
+                        .addReference(References.FOLLOWS_FROM, spanContext)
+                        // .asChildOf(spanContext)
+                        .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CONSUMER);
             } else {
-                System.out.println("no parent!");
+                LOGGER.debug(String.format("No parent for: %s", mapKey));
+                spanBuilder.withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_PRODUCER);
             }
         } catch (final Exception e) {
             spanBuilder.withTag("Error", "extract from request fail, error msg:" + e.getMessage());
         }
-        return spanBuilder.withStartTimestamp(tstamp).start();
+        return spanBuilder
+                .withStartTimestamp(Instant.EPOCH.until(start, ChronoUnit.MICROS))
+                .start();
     }
 }
-
 
