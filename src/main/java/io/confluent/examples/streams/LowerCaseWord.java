@@ -28,9 +28,9 @@ import org.apache.kafka.streams.kstream.KStream;
 
 import java.util.Properties;
 
-public class WordCountLambdaExample {
+public class LowerCaseWord {
     static final String inputTopic = "UppercasedTextLinesTopic";
-    static final String outputTopic = "streams-wordcount-output";
+    static final String outputTopic = "LowercasedTextLinesTopic";
     static Tracer tracer = SfxTracingHelper.createTracer("word-count");
 
     public static void main(final String[] args) {

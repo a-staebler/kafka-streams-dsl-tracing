@@ -21,8 +21,7 @@ mvn -Dskip.tests=true -Dcheckstyle.skip package
 # Setup
 
 ```
-kafka-topics --create --topic streams-plaintext-input --zookeeper localhost:2181 --partitions 1 --replication-factor 1
-kafka-topics --create --topic streams-plaintext-output --zookeeper localhost:2181 --partitions 1 --replication-factor 1
+kafka-topics --create --topic LowercasedTextLinesTopic -plaintext-output --zookeeper localhost:2181 --partitions 1 --replication-factor 1
 kafka-topics --create --topic UppercasedTextLinesTopic --zookeeper localhost:2181 --partitions 1 --replication-factor 1
 kafka-topics --create --topic TextLinesTopic --zookeeper localhost:2181 --partitions 1 --replication-factor 1
 ```
@@ -30,8 +29,7 @@ kafka-topics --create --topic TextLinesTopic --zookeeper localhost:2181 --partit
 To delete the topics:
 
 ```
-kafka-topics --zookeeper localhost:2181 --delete --topic streams-plaintext-input
-kafka-topics --zookeeper localhost:2181 --delete --topic streams-plaintext-output
+kafka-topics --zookeeper localhost:2181 --delete --topic LowercasedTextLinesTopic
 kafka-topics --zookeeper localhost:2181 --delete --topic UppercasedTextLinesTopic
 kafka-topics --zookeeper localhost:2181 --delete --topic TextLinesTopic
 ```
@@ -47,8 +45,8 @@ kafka-console-consumer --topic streams-wordcount-output --from-beginning --boots
 Start streams: 
 
 ```
-java -DingestUrl=YOUR_INGEST -DaccessToken=YOUR_TOKEN -cp target/kafka-streams-examples-5.3.0-standalone.jar io.confluent.examples.streams.WordCountLambdaExample
-java -DingestUrl=YOUR_INGEST -DaccessToken=YOUR_TOKEN -cp target/kafka-streams-examples-5.3.0-standalone.jar io.confluent.examples.streams.UpperCaseWordExample
+java -DingestUrl=YOUR_INGEST -DaccessToken=YOUR_TOKEN -cp target/kafka-streams-examples-5.3.0-standalone.jar io.confluent.examples.streams.LowerCaseWord
+java -DingestUrl=YOUR_INGEST -DaccessToken=YOUR_TOKEN -cp target/kafka-streams-examples-5.3.0-standalone.jar io.confluent.examples.streams.UpperCaseWord
 ```
 
 Feed the producer:

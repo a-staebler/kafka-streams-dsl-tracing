@@ -28,13 +28,12 @@ import org.apache.kafka.streams.kstream.KStream;
 
 import java.util.Properties;
 
-public class UpperCaseWordExample {
+public class UpperCaseWord {
     static final String inputTopic = "TextLinesTopic";
     public static final String outputTopic = "UppercasedTextLinesTopic";
     static Tracer tracer = SfxTracingHelper.createTracer("upper-case");
 
     public static void main(final String[] args) {
-
         final String bootstrapServers = args.length > 0 ? args[0] : "localhost:9092";
         final Properties streamsConfiguration = getStreamsConfiguration(bootstrapServers);
         final StreamsBuilder builder = new StreamsBuilder();
