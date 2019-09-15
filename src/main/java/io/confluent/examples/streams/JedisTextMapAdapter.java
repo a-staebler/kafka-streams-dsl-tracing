@@ -17,7 +17,7 @@ public class JedisTextMapAdapter implements TextMap {
 
     public JedisTextMapAdapter(final Jedis jedis, final String mapKey) {
         this.jedis = jedis;
-        this.mapKey = mapKey;
+        this.mapKey = mapKey.toLowerCase();
     }
 
     @Override
