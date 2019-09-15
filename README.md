@@ -56,3 +56,13 @@ Feed the producer:
 ```
 pr -t -m <(uuid -n 40) <(shuf -n 40 /usr/share/dict/words) | kafka-console-producer --broker-list localhost:9092 --topic TextLinesTopic
 ```
+
+# Todo
+
+Explore [Zipkin instrumentation for Kafka Streams][].
+
+Example: https://github.com/jeqo/talk-kafka-zipkin
+
+
+[Zipkin instrumentation for Kafka Streams]: https://github.com/openzipkin/brave/tree/master/instrumentation/kafka-streams
+
