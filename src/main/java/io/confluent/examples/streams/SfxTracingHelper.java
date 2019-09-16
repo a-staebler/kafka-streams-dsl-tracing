@@ -67,8 +67,8 @@ public class SfxTracingHelper {
         final Span span = createOrContinueSpan(tracer, op, cache, mapKey, start);
         span.setTag("cId", mapKey);
         Tags.SAMPLING_PRIORITY.set(span, 1);
-        span.setTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CONSUMER);
-        span.setTag(Tags.MESSAGE_BUS_DESTINATION.getKey(), topic);
+        Tags.SPAN_KIND.set(span, Tags.SPAN_KIND_CONSUMER);
+        Tags.MESSAGE_BUS_DESTINATION.set(span, topic);
         span.finish(Instant.EPOCH.until(Instant.now(), ChronoUnit.MICROS));
     }
 
