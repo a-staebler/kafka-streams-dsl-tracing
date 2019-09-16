@@ -51,7 +51,9 @@ public class SfxTracingHelper {
                 .withReporter(new ZipkinV2Reporter(AsyncReporter.create(sender)))
                 .build();
 
-        GlobalTracer.register(tracer);
+        if (!GlobalTracer.isRegistered()) {
+            GlobalTracer.register(tracer);
+        }
 
         return tracer;
     }
